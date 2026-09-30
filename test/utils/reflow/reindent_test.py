@@ -29,6 +29,42 @@ from sqlfluff.utils.reflow.reindent import (
 from sqlfluff.utils.reflow.sequence import ReflowSequence
 
 
+@pytest.mark.parametrize("render_variant_limit", [1, 5])
+@pytest.mark.parametrize("bad_indent", [False, True])
+def test_reindent_skipped_conditional_variants(render_variant_limit, bad_indent):
+    """A skipped predicate must not undo another variant's template indentation."""
+    expected = """with data as (
+    select * from events
+    where
+        {% if start %}
+            a > 1
+        {% else %}
+            a > 2
+        {% endif %}
+        {% if end %}
+            and a < 3
+        {% endif %}
+)
+select * from data
+"""
+    config = FluffConfig(
+        configs={
+            "core": {
+                "dialect": "ansi",
+                "rules": "LT02",
+                "ignore": "templating",
+                "render_variant_limit": render_variant_limit,
+            },
+            "indentation": {"implicit_indents": "allow"},
+        }
+    )
+    sql = expected.replace("            and", "  and") if bad_indent else expected
+    fixed = Linter(config=config).lint_string(sql, fix=True).fix_string()[0]
+    assert fixed == expected
+    assert Linter(config=config).lint_string(fixed).check_tuples() == []
+    assert Linter(config=config).lint_string(fixed, fix=True).fix_string()[0] == fixed
+
+
 def parse_ansi_string(sql, config):
     """Parse an ansi sql string for testing."""
     linter = Linter(config=config)

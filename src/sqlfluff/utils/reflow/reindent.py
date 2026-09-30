@@ -687,11 +687,16 @@ def _revise_skipped_source_lines(
     we try and lint both rendered and unrendered locations. In particular when
     there's one at the end of a loop. In all of these cases, if we find an
     unrendered {% if %} block, which is rendered elsewhere in the template
-    we skip that line.
+    we skip that line. Wholly skipped multiline blocks are also left alone:
+    their empty rendering may sit outside a clause's parser indent even when
+    the rendered SQL belongs inside it. Leave those boundaries to a rendering
+    with content, including another Jinja variant. Single-line blocks retain
+    their surrounding indentation when no content-bearing rendering exists.
     """
     reflow_logger.debug("# Revise skipped source lines.")
     if_locs = defaultdict(list)
     skipped_source_blocks = []
+    ignore_locs = []
 
     # Slice to avoid copying
     for idx, line in enumerate(lines[:]):
@@ -724,8 +729,9 @@ def _revise_skipped_source_lines(
                 if has_skipped_source:
                     reflow_logger.debug(f"  Skipped line found: {template_loc}")
                     skipped_source_blocks.append((source_loc, template_loc))
+                    if template_seg.pos_marker.source_position()[0] != source_loc[0]:
+                        ignore_locs.append(template_loc)
 
-    ignore_locs = []
     # Now iterate through each of the potentially skipped blocks, and work out
     # if they were otherwise rendered in a different location.
     for source_loc, template_loc in skipped_source_blocks:
